@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Focus Race MVP — Pomodoro Rooms + Mini-games + Penguin</title>
+<style>
+  :root{
+    --bg:#0e1320; --panel:#141a2a; --soft:#1a2135; --accent:#7c9eff; --ok:#66e3a1; --bad:#ff6b6b;
+    --text:#e9eefc; --muted:#9aa7c7; --chip:#212a44; --shadow:0 8px 28px rgba(0,0,0,.35);
+    --card-r:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background: radial-gradient(1200px 800px at 10% -10%, #1b2340 0%, #0e1320 50%), var(--bg); color:var(--text); font:16px/1.4 system-ui,Segoe UI,Roboto,Inter,Arial; }
+  header{padding:22px 18px; display:flex; gap:14px; align-items:center; border-bottom:1px solid #1b2340; position:sticky; top:0; background:linear-gradient(180deg, rgba(10,14,25,.95), rgba(10,14,25,.85)); backdrop-filter: blur(6px); z-index:5}
+  .logo{font-weight:800; letter-spacing:.3px}
+  .tag{padding:2px 8px; border-radius:999px; background:var(--chip); color:var(--muted); font-size:12px}
+  main{max-width:1150px; margin:24px auto; padding:0 16px; display:grid; grid-template-columns: 1.2fr .8fr; gap:16px}
+  @media (max-width: 980px){ main{grid-template-columns:1fr} }
+  .card{background:linear-gradient(180deg, var(--panel), var(--soft)); border:1px solid #222a44; border-radius:var(--card-r); padding:14px; box-shadow:var(--shadow)}
+  h2,h3{margin:.2rem 0 .6rem 0}
+  h1{margin:.6rem 0 1rem; font-size:28px}
+  .row{display:flex; align-items:center}
+  .col{display:flex; flex-direction:column}
+  .right{margin-left:auto}
+  .muted{color:var(--muted)}
+  .small{font-size:12px}
+  .btn{background:linear-gradient(180deg, #26365f, #1d2b4f); border:1px solid #2c3b69; color:#dbe7ff; padding:8px 12px; border-radius:12px; cursor:pointer}
+  .btn:hover{filter:brightness(1.05)}
+  .btn:disabled{opacity:.5; cursor:not-allowed}
+  input,select{background:#0e1426; color:var(--text); border:1px solid #233159; border-radius:12px; padding:8px 10px}
+  input::placeholder{color:#7280a7}
+  .grid{display:grid; gap:10px}
+  .grid2{grid-template-columns: 1fr 1fr}
+  .grid3{grid-template-columns: repeat(3, 1fr)}
+  .chip{background:#0d1428; border:1px dashed #2a3966; padding:6px 10px; border-radius:10px}
+  .avatar{width:26px; height:26px; border-radius:50%; background:linear-gradient(45deg,#7c9eff,#66e3a1); display:inline-flex; align-items:center; justify-content:center; color:#0c1224; font-weight:700; font-size:12px}
+  .list .item{display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed #223056}
+  .list .item:last-child{border-bottom:0}
+  .badge{background:#0c1330; border:1px solid #2b3b6a; border-radius:999px; padding:2px 10px; font-size:12px; color:#9db2ff}
+  .phase{font-weight:700; letter-spacing:.3px}
+  .timer{font-size:36px; font-weight:800; letter-spacing:1px}
+  .ok{color:var(--ok)} .bad{color:var(--bad)}
+  #countdownOverlay h3{ font-size:40px; margin:6px 0; }
+  /* Penguin chat area */
+  #penguinChat{height:220px; overflow:auto; border:1px solid #223056; background:#0a1226; border-radius:12px; padding:10px}
+  .bubble{max-width:85%; padding:8px 11px; border-radius:14px; margin:6px 0; line-height:1.35}
+  .me{background:#1e3057; margin-left:auto}
+  .peng{background:#152246; border:1px solid #2a3b6b}
+  .footer{opacity:.7; font-size:12px; padding:10px 0 0}
+  #miniGame{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Focus Race</div>
+  <span class="tag">MVP</span>
+  <span class="tag">No installs</span>
+  <span class="tag">Local demo: multi-tab</span>
+  <span class="right muted small">Room Pomodoro • Break mini-games • Penguin coach</span>
+</header>
+
+<main>
+  <!-- LEFT COLUMN: Race + Pomodoro + Mini-games + Leaderboard -->
+  <section class="col" style="gap:16px">
+    <div class="card">
+      <h1>Race Lobby</h1>
+      <div class="grid grid3">
+        <div class="col">
+          <label class="small muted">Your name</label>
+          <input id="yourName" placeholder="Valeria" />
+        </div>
+        <div class="col">
+          <label class="small muted">Avatar (letter)</label>
+          <input id="yourAvatar" maxlength="1" placeholder="V" />
+        </div>
+        <div class="col">
+          <label class="small muted">Role</label>
+          <select id="roleSel">
+            <option value="joiner">Joiner</option>
+            <option value="moderator">Moderator</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid2" style="margin-top:10px">
+        <div class="card" style="padding:10px">
+          <h3>Create Room</h3>
+          <button class="btn" id="btnCreate">Create Code</button>
+          <div class="row" style="margin-top:8px; gap:8px">
+            <span class="chip">Room code: <b id="roomCode">—</b></span>
+            <button class="btn" id="btnCopy">Copy</button>
+          </div>
+          <div id="countdownOverlay" class="card" style="display:none;margin-top:10px;text-align:center">
+            <h3 id="countdownNum">3</h3>
+            <div class="small muted">Starting…</div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:10px">
+          <h3>Join Room</h3>
+          <div class="row" style="gap:8px">
+            <input id="joinCode" placeholder="Enter code e.g. Q4M2" />
+            <button class="btn" id="btnJoin">Join</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" style="gap:8px; margin-top:12px">
+        <div class="row" style="gap:10px">
+          <span class="badge">Players</span>
+          <span class="small muted">Open the same file in another tab to demo.</span>
+          <span class="right small muted" id="playersCount">0</span>
+        </div>
+        <div class="list" id="playersList"></div>
+
+        <div class="row" style="margin-top:6px;gap:10px">
+          <label class="row small" style="gap:6px">
+            <input type="checkbox" id="readyToggle"> I’m ready
+          </label>
+          <span class="small muted" id="readyStatus">0 ready</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="gap:10px">
+        <h2>Synced Pomodoro</h2>
+        <span class="badge" id="roundBadge">Round —</span>
+        <span class="right badge"><span class="phase" id="phaseLabel">IDLE</span></span>
+      </div>
+      <div class="grid grid3">
+        <div class="col">
+          <label class="small muted">Focus (min)</label>
+          <input id="focusMin" type="number" value="25" />
+        </div>
+        <div class="col">
+          <label class="small muted">Break (min)</label>
+          <input id="breakMin" type="number" value="5" />
+        </div>
+        <div class="col">
+          <label class="small muted">Rounds</label>
+          <input id="rounds" type="number" value="4" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px; gap:8px">
+        <button class="btn" id="btnStartSynced" disabled>Start Synced</button>
+        <button class="btn" id="btnStop">Stop</button>
+        <span class="right timer" id="timer">00:00</span>
+      </div>
+
+      <div id="miniGame" class="card" style="margin-top:12px">
+        <div class="row" style="gap:8px">
+          <span class="badge">Break Mini-game</span>
+          <span class="small muted">Earn +10 pts with correct answers.</span>
+        </div>
+        <div style="margin-top:8px">
+          <div id="quizQ" style="font-weight:700;margin-bottom:6px">—</div>
+          <div id="quizChoices" class="col" style="gap:8px"></div>
+          <div id="quizResult" class="small muted" style="margin-top:6px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="leaderboard">
+      <div class="row" style="gap:10px">
+        <h2>Leaderboard</h2>
+        <span class="badge muted">auto-updates</span>
+        <button class="btn right" id="btnExportCsv">Download CSV</button>
+      </div>
+      <div class="list" id="scoresList"></div>
+      <div class="footer small muted">Close room (moderator) to finalize & present scores.</div>
+    </div>
+  </section>
+
+  <!-- RIGHT COLUMN: Penguin companion -->
+  <aside class="card">
+    <h2>🐧 Penguin — Your Focus Buddy</h2>
+    <div id="penguinChat"></div>
+    <div class="row" style="margin-top:8px; gap:8px; flex-wrap:wrap">
+      <button class="btn" data-act="breathe">Breathing</button>
+      <button class="btn" data-act="reframe">Reframe Thought</button>
+      <button class="btn" data-act="plan">Break Plan</button>
+      <button class="btn" data-act="checkin">Quick Check-in</button>
+      <span class="right small muted" id="streakInfo">Streak: 0 days</span>
+    </div>
+    <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">
+      <span class="small muted">Mood:</span>
+      <button class="btn moodBtn" data-mood="5">😄</button>
+      <button class="btn moodBtn" data-mood="4">🙂</button>
+      <button class="btn moodBtn" data-mood="3">😐</button>
+      <button class="btn moodBtn" data-mood="2">🙁</button>
+      <button class="btn moodBtn" data-mood="1">😫</button>
+    </div>
+  </aside>
+</main>
+
+<script>
+/* =========================
+   Utilities & State
+========================= */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const sleep = ms => new Promise(r=>setTimeout(r, ms));
+
+const state = {
+  you: { id: crypto.randomUUID(), name:'', avatar:'', moderator:false },
+  roomCode: null,
+  players: {},  // playerId -> {id,name,avatar,score,ready}
+  ready: false,
+  readyMap: {},
+  phase: 'IDLE', // IDLE | FOCUS | BREAK
+  focusMin: 25, breakMin: 5, rounds: 4, round: 0,
+  phaseEndTs: null,
+  breakQuizActive: false
+};
+
+/* =========================
+   Local storage for profile
+========================= */
+(function restoreProfile(){
+  const nm = localStorage.getItem('yourName') || '';
+  const av = localStorage.getItem('yourAvatar') || '';
+  if(nm) $('#yourName').value = nm;
+  if(av) $('#yourAvatar').value = av;
+})();
+
+/* =========================
+   Networking (BroadcastChannel fallback + optional WebSocket)
+========================= */
+let bc = null; // BroadcastChannel
+let ws = null; // optional WebSocket relay
+let wsReady = false;
+
+function openBroadcastChannel(code){
+  if(bc) try{ bc.close(); }catch{}
+  bc = new BroadcastChannel('focusrace_'+code);
+  bc.onmessage = ev => handleNetMessage(ev.data);
+}
+
+function tryOpenWebSocketRelay(code){
+  // Optional: if you add a relay, set window.FOCUS_RACE_WS to "wss://yourserver"
+  if(!window.FOCUS_RACE_WS) return;
+  try{
+    if(ws) ws.close();
+    ws = new WebSocket(window.FOCUS_RACE_WS);
+    ws.onopen = ()=>{ wsReady=true; ws.send(JSON.stringify({type:'join_room', room:code})); };
+    ws.onmessage = e => { try{ handleNetMessage(JSON.parse(e.data)); }catch{} };
+    ws.onclose = ()=>{ wsReady=false; };
+  }catch{}
+}
+
+function netSend(obj){
+  // Always send on BroadcastChannel (local demo)
+  if(bc) bc.postMessage(obj);
+  // Also send to relay if present
+  if(wsReady && ws && ws.readyState===1){ try{ ws.send(JSON.stringify(obj)); }catch{} }
+}
+
+/* =========================
+   UI Helpers
+========================= */
+function pushMsg(from, text){
+  const box = $('#penguinChat');
+  const div = document.createElement('div');
+  div.className = 'bubble ' + (from==='me' ? 'me' : 'peng');
+  div.textContent = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+function systemSay(text){ pushMsg('peng', text); }
+
+/* =========================
+   Room & Players
+========================= */
+function randomCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s=''; for(let i=0;i<4;i++) s += chars[(Math.random()*chars.length)|0];
+  return s;
+}
+
+function refreshPlayersUI(){
+  const list = $('#playersList'); list.innerHTML='';
+  const arr = Object.values(state.players);
+  $('#playersCount').textContent = arr.length;
+  arr.forEach(p=>{
+    const row = document.createElement('div'); row.className='item';
+    const av = document.createElement('div'); av.className='avatar'; av.textContent=(p.avatar||'?').toUpperCase();
+    const name = document.createElement('div'); name.textContent = p.name || 'Anon';
+    const score = document.createElement('span'); score.className='right badge'; score.textContent = (p.score||0)+' pts';
+    const ready = document.createElement('span'); ready.className='badge'; ready.style.marginLeft='auto'; ready.textContent = p.ready ? 'Ready' : '—';
+    row.appendChild(av); row.appendChild(name); row.appendChild(score); row.appendChild(ready);
+    list.appendChild(row);
+  });
+}
+
+function updateReadyStatus(){
+  const total = Object.keys(state.players).length || 0;
+  const readyCount = Object.values(state.players).filter(p=>p.ready).length;
+  $('#readyStatus').textContent = `${readyCount} ready / ${total}`;
+}
+function gateStartButton(){
+  if(!state.you.moderator){ $('#btnStartSynced').disabled = true; return; }
+  const total = Object.keys(state.players).length;
+  const readyCount = Object.values(state.players).filter(p=>p.ready).length;
+  $('#btnStartSynced').disabled = !(readyCount>0 && readyCount===total);
+}
+
+function enterRoom(code){
+  state.roomCode = code;
+  $('#roomCode').textContent = code;
+  openBroadcastChannel(code);
+  tryOpenWebSocketRelay(code);
+  // add me to players
+  const me = {
+    id: state.you.id,
+    name: state.you.name || 'Me',
+    avatar: (state.you.avatar||'?').toUpperCase(),
+    score: 0,
+    ready: !!state.ready
+  };
+  state.players[me.id] = me;
+  refreshPlayersUI(); updateReadyStatus(); gateStartButton();
+  // announce presence
+  netSend({type:'presence', room:code, player: me});
+  systemSay(`Room ${code} ready. Share the code. When everyone toggles Ready, the moderator can start.`);
+}
+
+/* Handle network messages */
+function handleNetMessage(msg){
+  if(!msg || (state.roomCode && msg.room && msg.room!==state.roomCode)) return;
+
+  if(msg.type==='presence'){
+    state.players[msg.player.id] = msg.player;
+    refreshPlayersUI(); updateReadyStatus(); gateStartButton();
+    // echo back our presence for newcomers
+    if(msg.player.id!==state.you.id){
+      netSend({type:'presence_ack', room:state.roomCode, player: state.players[state.you.id]});
+    }
+    return;
+  }
+  if(msg.type==='presence_ack'){
+    state.players[msg.player.id] = msg.player;
+    refreshPlayersUI(); updateReadyStatus(); gateStartButton();
+    return;
+  }
+  if(msg.type==='ready'){
+    const p = state.players[msg.playerId]; if(p){ p.ready = !!msg.ready; }
+    refreshPlayersUI(); updateReadyStatus(); gateStartButton();
+    return;
+  }
+  if(msg.type==='start_pomo'){
+    // Authoritative start (endTs set by moderator)
+    const pl = msg.payload;
+    state.focusMin = pl.focusMin; state.breakMin = pl.breakMin; state.rounds = pl.rounds;
+    state.round = pl.round;
+    setPhase(pl.phase);
+    state.phaseEndTs = pl.endTs;
+    $('#roundBadge').textContent = `Round ${state.round} / ${state.rounds}`;
+    return;
+  }
+  if(msg.type==='phase'){
+    setPhase(msg.phase);
+    state.phaseEndTs = msg.endTs || null;
+    return;
+  }
+  if(msg.type==='score'){
+    const p = state.players[msg.playerId]; if(p){ p.score = (p.score||0)+(msg.delta||0); }
+    refreshPlayersUI(); refreshScoresUI();
+    return;
+  }
+  if(msg.type==='quiz'){ startQuiz(msg.q); return; }
+  if(msg.type==='math'){ startMath(msg.payload); return; }
+  if(msg.type==='type'){ startType(msg.payload); return; }
+  if(msg.type==='close_room'){
+    systemSay('Moderator closed the room. Final leaderboard below.');
+    return;
+  }
+}
+
+/* =========================
+   Ready toggle
+========================= */
+$('#readyToggle').addEventListener('change', ()=>{
+  state.ready = !!$('#readyToggle').checked;
+  const me = state.players[state.you.id]; if(me){ me.ready = state.ready; }
+  netSend({type:'ready', room:state.roomCode, playerId:state.you.id, ready:state.ready});
+  refreshPlayersUI(); updateReadyStatus(); gateStartButton();
+});
+
+/* =========================
+   Create / Join
+========================= */
+$('#btnCreate').addEventListener('click', ()=>{
+  readProfile();
+  const code = randomCode();
+  state.you.moderator = ($('#roleSel').value==='moderator');
+  enterRoom(code);
+});
+$('#btnCopy').addEventListener('click', ()=>{
+  const c = state.roomCode || '';
+  navigator.clipboard.writeText(c);
+  systemSay('Room code copied.');
+});
+$('#btnJoin').addEventListener('click', ()=>{
+  readProfile();
+  const code = ($('#joinCode').value||'').trim().toUpperCase();
+  if(!code){ systemSay('Enter a room code to join.'); return; }
+  state.you.moderator = ($('#roleSel').value==='moderator');
+  enterRoom(code);
+});
+
+/* =========================
+   Pomodoro Engine
+========================= */
+const phaseLabel = $('#phaseLabel'), timerEl = $('#timer'), roundBadge = $('#roundBadge');
+let tickTimer = null;
+let audioCtx;
+
+function beep(ms=200, freq=880){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value=freq; o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime+0.01);
+    o.start();
+    setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.05); o.stop(); }, ms);
+  }catch{}
+}
+
+function readInputs(){
+  state.focusMin = Math.max(1, parseInt($('#focusMin').value||'25',10));
+  state.breakMin = Math.max(1, parseInt($('#breakMin').value||'5',10));
+  state.rounds = Math.max(1, parseInt($('#rounds').value||'4',10));
+}
+
+function startCountdown(seconds=3, onDone=()=>{}){
+  const overlay = $('#countdownOverlay'), num = $('#countdownNum');
+  overlay.style.display='block';
+  let n=seconds;
+  const step=()=>{
+    num.textContent = n;
+    beep(120, n===1? 1200: 900);
+    if(--n<0){ overlay.style.display='none'; onDone(); }
+    else setTimeout(step, 1000);
+  };
+  step();
+}
+
+function setPhase(ph){
+  state.phase = ph;
+  phaseLabel.textContent = ph;
+  if(ph==='FOCUS'){ $('#miniGame').style.display='none'; }
+  if(ph==='BREAK'){ maybeStartMiniGame(); beep(180, 660); }
+  if(ph==='FOCUS'){ beep(180, 520); }
+}
+
+function startTick(){
+  if(tickTimer) clearInterval(tickTimer);
+  tickTimer = setInterval(tick, 250);
+}
+
+function formatMMSS(ms){
+  const s = Math.max(0, Math.ceil(ms/1000));
+  const m = Math.floor(s/60), ss = s%60;
+  return `${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+}
+
+function tick(){
+  if(!state.phaseEndTs){ timerEl.textContent = '00:00'; return; }
+  const remain = state.phaseEndTs - Date.now();
+  timerEl.textContent = formatMMSS(remain);
+  if(remain <= 0){
+    if(state.phase==='FOCUS'){
+      // go into break
+      setPhase('BREAK');
+      state.phaseEndTs = Date.now() + state.breakMin*60*1000;
+      netSend({type:'phase', room:state.roomCode, phase:'BREAK', endTs: state.phaseEndTs});
+    }else if(state.phase==='BREAK'){
+      // next round or finish
+      if(state.round < state.rounds){
+        state.round++;
+        roundBadge.textContent = `Round ${state.round} / ${state.rounds}`;
+        setPhase('FOCUS');
+        state.phaseEndTs = Date.now() + state.focusMin*60*1000;
+        netSend({type:'phase', room:state.roomCode, phase:'FOCUS', endTs: state.phaseEndTs});
+      }else{
+        // end of session
+        setPhase('IDLE'); state.phaseEndTs = null;
+        netSend({type:'close_room', room:state.roomCode});
+        systemSay('Session finished. Leaderboard ready.');
+      }
+    }
+  }
+}
+
+$('#btnStartSynced').addEventListener('click', ()=>{
+  if(!state.you.moderator) return;
+  readInputs();
+  state.round=1;
+  roundBadge.textContent=`Round ${state.round} / ${state.rounds}`;
+  setPhase('FOCUS');
+  startCountdown(3, ()=>{
+    const endTs = Date.now() + state.focusMin*60*1000;
+    state.phaseEndTs = endTs; startTick();
+    netSend({type:'start_pomo', room:state.roomCode, payload:{
+      phase:'FOCUS', round:state.round, rounds:state.rounds,
+      focusMin:state.focusMin, breakMin:state.breakMin, endTs
+    }});
+  });
+});
+
+$('#btnStop').addEventListener('click', ()=>{
+  setPhase('IDLE'); state.phaseEndTs = null; timerEl.textContent='00:00';
+  if(tickTimer) clearInterval(tickTimer);
+});
+
+startTick();
+
+/* =========================
+   Mini-games (Quiz, Math, Type)
+========================= */
+const miniWrap = $('#miniGame'), quizQ=$('#quizQ'), quizChoices=$('#quizChoices'), quizResult=$('#quizResult');
+const MINI_TYPES = ['quiz','math','type'];
+const QUIZ_BANK = [
+  {q:'What is 7 × 8?', c:['54','56','64','58'], a:1},
+  {q:'Derivative of x²?', c:['2x','x','x³','0'], a:0},
+  {q:'Binary of 10?', c:['1010','1001','1111','0101'], a:0},
+  {q:'Ohm’s law?', c:['V=IR','P=IV','E=mc²','I=V/R'], a:0},
+  {q:'lim sin x / x (x→0)?', c:['0','1','∞','2'], a:1},
+];
+
+function antiSpamBtn(btn){ btn.disabled=true; setTimeout(()=>btn.disabled=false, 1200); }
+
+function showMiniWrap(){ miniWrap.style.display='block'; quizResult.textContent=''; quizChoices.innerHTML=''; }
+function hideMiniWrap(){ setTimeout(()=>{ miniWrap.style.display='none'; state.breakQuizActive=false; }, 900); }
+
+function maybeStartMiniGame(){
+  if(state.breakQuizActive) return;
+  if(state.you.moderator){
+    const kind = MINI_TYPES[(Math.random()*MINI_TYPES.length)|0];
+    if(kind==='quiz'){
+      const q = QUIZ_BANK[(Math.random()*QUIZ_BANK.length)|0];
+      netSend({type:'quiz', room:state.roomCode, q});
+    }else if(kind==='math'){
+      const a = 10+((Math.random()*40)|0), b = 2+((Math.random()*9)|0);
+      const op = Math.random()<0.5 ? '+' : '×';
+      const ans = op==='+'? (a+b) : (a*b);
+      netSend({type:'math', room:state.roomCode, payload:{text:`${a} ${op} ${b} = ?`, ans}});
+    }else{
+      const words = ['focus','robot','vector','ohm','matrix','kernel','python','esp32','pomodoro'];
+      const w = words[(Math.random()*words.length)|0];
+      netSend({type:'type', room:state.roomCode, payload:{text:`Type: ${w}`, target:w}});
+    }
+  }
+}
+
+function startQuiz(q){
+  state.breakQuizActive = true; showMiniWrap();
+  quizQ.textContent = q.q; quizChoices.innerHTML='';
+  q.c.forEach((opt, idx)=>{
+    const b = document.createElement('button'); b.className='btn'; b.textContent=opt;
+    b.addEventListener('click', ()=>{
+      antiSpamBtn(b);
+      const correct = idx===q.a;
+      quizResult.textContent = correct? '✅ Correct! +10 pts' : '❌ Not quite.';
+      if(correct) netSend({type:'score', room:state.roomCode, playerId:state.you.id, delta:10});
+      hideMiniWrap();
+    });
+    quizChoices.appendChild(b);
+  });
+}
+function startMath(payload){
+  state.breakQuizActive = true; showMiniWrap();
+  quizQ.textContent = payload.text;
+  const input = document.createElement('input'); input.type='text'; input.placeholder='Answer'; input.style='flex:1';
+  const submit = document.createElement('button'); submit.className='btn'; submit.textContent='Submit';
+  const wrap = document.createElement('div'); wrap.className='row'; wrap.style.gap='8px'; wrap.appendChild(input); wrap.appendChild(submit);
+  quizChoices.appendChild(wrap);
+  const check=()=>{
+    antiSpamBtn(submit);
+    const v = parseInt((input.value||'').trim(),10);
+    const correct = v===payload.ans;
+    quizResult.textContent = correct? '✅ Correct! +10 pts' : '❌ Not quite.';
+    if(correct) netSend({type:'score', room:state.roomCode, playerId:state.you.id, delta:10});
+    hideMiniWrap();
+  };
+  submit.addEventListener('click', check);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') check(); });
+}
+function startType(payload){
+  state.breakQuizActive = true; showMiniWrap();
+  quizQ.textContent = payload.text;
+  const input = document.createElement('input'); input.type='text'; input.placeholder='Type here'; input.style='flex:1';
+  const submit = document.createElement('button'); submit.className='btn'; submit.textContent='Submit';
+  const wrap = document.createElement('div'); wrap.className='row'; wrap.style.gap='8px'; wrap.appendChild(input); wrap.appendChild(submit);
+  quizChoices.appendChild(wrap);
+  const check=()=>{
+    antiSpamBtn(submit);
+    const correct = (input.value||'').trim().toLowerCase()===payload.target.toLowerCase();
+    quizResult.textContent = correct? '✅ Correct! +10 pts' : '❌ Not quite.';
+    if(correct) netSend({type:'score', room:state.roomCode, playerId:state.you.id, delta:10});
+    hideMiniWrap();
+  };
+  submit.addEventListener('click', check);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter') check(); });
+}
+
+/* =========================
+   Leaderboard & CSV
+========================= */
+function refreshScoresUI(){
+  const box = $('#scoresList'); box.innerHTML='';
+  const arr = Object.values(state.players).sort((a,b)=> (b.score|0)-(a.score|0));
+  arr.forEach((p,i)=>{
+    const row = document.createElement('div'); row.className='item';
+    const rank = document.createElement('span'); rank.className='badge'; rank.textContent = '#'+(i+1);
+    const av = document.createElement('div'); av.className='avatar'; av.textContent=(p.avatar||'?').toUpperCase();
+    const name = document.createElement('div'); name.textContent = p.name;
+    const score = document.createElement('span'); score.className='right badge'; score.textContent = (p.score||0)+' pts';
+    row.appendChild(rank); row.appendChild(av); row.appendChild(name); row.appendChild(score);
+    box.appendChild(row);
+  });
+}
+setInterval(refreshScoresUI, 1000);
+
+$('#btnExportCsv').addEventListener('click', ()=>{
+  const list = Object.values(state.players).sort((a,b)=> (b.score|0)-(a.score|0));
+  const rows = [
+    ['Room', state.roomCode || 'Local'],
+    ['Focus (min)', state.focusMin], ['Break (min)', state.breakMin], ['Rounds', state.rounds],
+    [], ['Rank','Name','Score']
+  ];
+  list.forEach((p,i)=> rows.push([i+1, p.name, p.score|0]));
+  const csv = rows.map(r=> r.map(x=> `"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`session_${state.roomCode||'local'}.csv`; a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* =========================
+   Penguin Emotional Companion
+========================= */
+const pengActions = {
+  breathe: "Try 4-7-8: inhale 4s, hold 7s, exhale 8s. Let shoulders drop. I’ll count with you when a break starts.",
+  reframe: "Notice the thought → Label it (‘prediction’, ‘self-criticism’) → Ask: what’s 1 small action now? (Start timer, open doc.)",
+  plan: "Break plan: (1) write one next action; (2) 20-min focus; (3) 5-min stretch; (4) reward: tea or 3-min song.",
+  checkin: "How are you feeling 1-5? Use the mood buttons below. I’ll track your streaks (private, on this device)."
+};
+
+$$('[data-act]').forEach(b=>{
+  b.addEventListener('click', ()=>{ pushMsg('me', b.textContent); systemSay(pengActions[b.dataset.act]); });
+});
+
+const streakInfo = $('#streakInfo');
+$$('.moodBtn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const mood = parseInt(b.dataset.mood,10);
+    const logs = JSON.parse(localStorage.getItem('moodLogs')||'[]');
+    const day = new Date(); const key = `${day.getFullYear()}-${day.getMonth()+1}-${day.getDate()}`;
+    const exists = logs.find(x=>x.day===key);
+    if(!exists) logs.push({day:key, mood});
+    else exists.mood = mood;
+    localStorage.setItem('moodLogs', JSON.stringify(logs));
+    updateStreak();
+    systemSay('Penguin: Logged your mood for today. 🐧');
+  });
+});
+function updateStreak(){
+  const logs = JSON.parse(localStorage.getItem('moodLogs')||'[]');
+  let streak=0; const today = new Date();
+  for(let i=0;;i++){
+    const d = new Date(today); d.setDate(today.getDate()-i);
+    const key = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    if(logs.some(x=>x.day===key)) streak++;
+    else break;
+  }
+  streakInfo.textContent = `Streak: ${streak} day${streak===1?'':'s'}`;
+}
+updateStreak();
+
+/* =========================
+   Profile + small helpers
+========================= */
+function readProfile(){
+  const nm = ($('#yourName').value||'').trim() || 'Player';
+  const av = ($('#yourAvatar').value||'V').trim().slice(0,1) || 'V';
+  state.you.name = nm; state.you.avatar = av;
+  localStorage.setItem('yourName', nm);
+  localStorage.setItem('yourAvatar', av);
+}
+
+/* Greet */
+systemSay('Welcome! Create a room (moderator) or join with a code. Ready-up → Start → Break mini-games → Leaderboard.');
+</script>
+</body>
+</html>
